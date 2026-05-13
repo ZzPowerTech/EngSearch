@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  # ── API FastAPI ──────────────────────────────────────────────────────────
+  api:
+    build: .
+    container_name: engsearch-api
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - .:/app          # hot reload — mudanças refletem sem rebuild
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ── Celery Worker ────────────────────────────────────────────────────────
+  worker:
+    build: .
+    container_name: engsearch-worker
+    command: celery -A tasks.celery_app worker --loglevel=info -c 4
+    env_file: .env
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ── Redis (broker + backend do Celery) ──────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: engsearch-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # ── Dashboard Next.js ─────────────────────────────────────────────────
+  # dashboard:
+  #   build: ./dashboard
+  #   container_name: engsearch-dashboard
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://api:8000
+  #   restart: unless-stopped
+  # (descomentado quando a Fase 7 estiver implementada)
