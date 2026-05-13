@@ -1,38 +1,58 @@
 # EngSearch
 
-Robô de prospecção inteligente para o setor de construção civil. Encontra leads qualificados no LinkedIn e Instagram, faz o primeiro contato por e-mail e conduz o agendamento de reuniões via WhatsApp — de forma automatizada e com linguagem natural.
+Robô de prospecção e contato inteligente para o setor de construção civil. Acessa perfis de construtoras, incorporadoras e escritórios de engenharia no Instagram e LinkedIn, extrai o link de WhatsApp da recepção, inicia o contato via WhatsApp, envia o e-mail de apresentação quando solicitado e agenda reuniões de forma automatizada — notificando o gestor da Neomot a cada avanço.
 
 Desenvolvido para o gestor comercial da **Neomot** (venda de elevadores para construtoras).
 
 ---
 
-## O que o EngSearch faz
+## Fluxo Completo
 
 ```
-LinkedIn / Instagram
+Instagram / LinkedIn
         │
-        ▼ (Claude Computer Use)
+        ▼  Claude Computer Use
   Agente Prospector
-  ─ busca construtoras, engenheiros, diretores
-  ─ extrai: nome, cargo, empresa, e-mail, WhatsApp
+  ─ acessa o perfil da empresa
+  ─ extrai o link wa.me/ ou botão WhatsApp da bio
+  ─ salva: empresa, número da recepção, URL do perfil
         │
-        ▼
-   Banco de Leads (Supabase)
+        ▼  Twilio WhatsApp
+  Bot "Neo" contata a recepção
+  ─ apresenta a Neomot brevemente
+  ─ aguarda a recepção solicitar o e-mail
         │
-        ▼ (SendGrid)
-  E-mail de Apresentação
-  ─ gerado por IA, personalizado por cargo/empresa
-  ─ CTA: "Posso enviar mais detalhes por WhatsApp?"
+        ▼  (recepção pede o e-mail)
+  Bot envia o e-mail de apresentação  (SendGrid)
+  ─ gerado por IA, personalizado por segmento
         │
-        ▼ (quando o lead responde)
-   Bot WhatsApp "Neo" (Twilio)
-  ─ conversa natural, mensagens curtas
-  ─ coleta: data, horário, formato da reunião
-  ─ confirma e registra o agendamento
+        ▼  Celery (24h depois)
+  Follow-up automático via WhatsApp
+  ─ "Conseguiu ver nosso e-mail?"
+  ─ propõe reunião rápida
+  ─ pergunta com qual área falar:
+      → Engenharia / Área Técnica
+      → Suprimentos / Compras
         │
-        ▼
-   Reunião Agendada ✓
-   Dashboard do Gestor
+        ├─ Reunião agendada ──────────────────────┐
+        │                                         ▼
+        └─ Contato técnico coletado ──►  Notificação WhatsApp
+                                         para o gestor Neomot
+```
+
+---
+
+## Pipeline de Status
+
+```
+discovered
+    → reception_contacted   (primeiro WhatsApp enviado)
+    → email_requested       (recepção forneceu o e-mail)
+    → email_sent            (e-mail de apresentação enviado)
+    → followup_sent         (follow-up 24h enviado)
+    → meeting_scheduled     (reunião agendada ✓)
+    → contact_requested     (contato técnico/compras coletado)
+    → lost                  (sem interesse)
 ```
 
 ---
@@ -57,39 +77,32 @@ LinkedIn / Instagram
 ```
 engsearch/
 ├── agents/
-│   ├── prospector.py       # Agente de prospecção (Claude Computer Use)
-│   ├── email_writer.py     # Geração e envio de e-mails personalizados
-│   └── whatsapp_bot.py     # Bot conversacional para agendamento
+│   ├── prospector.py       # Extrai WhatsApp da recepção via Instagram/LinkedIn
+│   ├── email_writer.py     # Gera e envia e-mail sob demanda
+│   └── whatsapp_bot.py     # Toda a lógica conversacional (recepção + follow-up)
 ├── api/
-│   ├── main.py             # FastAPI entrypoint
+│   ├── main.py
 │   └── routes/
 │       ├── leads.py        # CRUD de leads
-│       ├── campaigns.py    # Disparo de campanhas
-│       └── webhooks.py     # Recebimento de mensagens WhatsApp
+│       ├── campaigns.py    # Disparar prospecção e contatos em massa
+│       └── webhooks.py     # Recebe mensagens WhatsApp e roteia por fase
 ├── db/
 │   ├── schema.sql          # Tabelas: leads, interacoes, reunioes
-│   └── client.py           # Cliente Supabase
+│   └── client.py
 ├── tasks/
-│   ├── celery_app.py       # Configuração das filas
-│   ├── prospect_task.py    # Task de prospecção assíncrona
-│   └── email_task.py       # Task de envio de e-mail
-├── dashboard/              # Painel Next.js do gestor
+│   ├── celery_app.py
+│   ├── prospect_task.py    # Prospecção assíncrona
+│   ├── reception_task.py   # Envio de abertura para recepção
+│   ├── followup_task.py    # Follow-up 24h após e-mail
+│   └── notify_task.py      # Notificação ao gestor Neomot
+├── dashboard/              # Painel Next.js com métricas do pipeline
 ├── prompts/
-│   ├── prospector_system.md  # Instruções do agente prospector
-│   ├── email_template.md     # Template de e-mail de apresentação
-│   └── whatsapp_persona.md   # Persona "Neo" do bot WhatsApp
-├── tests/
-├── docker-compose.yml
-└── .env.example
-```
-
----
-
-## Fluxo de Status dos Leads
-
-```
-discovered → email_sent → responded → whatsapp_active → meeting_scheduled
-                                                      ↘ lost
+│   ├── prospector_system.md   # Instruções do agente de prospecção
+│   ├── reception_intro.md     # Script de abertura com a recepção
+│   ├── email_template.md      # Template de e-mail de apresentação
+│   ├── followup_script.md     # Script de follow-up 24h
+│   └── notify_template.md     # Templates de notificação ao gestor
+└── tests/
 ```
 
 ---
@@ -99,21 +112,21 @@ discovered → email_sent → responded → whatsapp_active → meeting_schedule
 ```bash
 # 1. Configurar variáveis de ambiente
 cp .env.example .env
-# Preencher: SUPABASE_URL, SENDGRID_API_KEY, TWILIO_*, ANTHROPIC_API_KEY
+# Preencher todas as chaves (ver seção abaixo)
 
 # 2. Subir os serviços
 docker-compose up -d
 
-# 3. Aplicar o schema no Supabase
-# (executar db/schema.sql no SQL Editor do Supabase)
+# 3. Aplicar schema no Supabase
+# Executar o conteúdo de db/schema.sql no SQL Editor do Supabase
 
 # 4. Iniciar uma campanha de prospecção
-curl -X POST "http://localhost:8000/campaigns/prospect?termo=construtora+SP&max_leads=20"
+curl -X POST "http://localhost:8000/campaigns/prospect?termo=construtora+SP&plataforma=instagram&max_leads=15"
 
-# 5. Disparar e-mails para leads descobertos
-curl -X POST "http://localhost:8000/campaigns/email-blast"
+# 5. Contatar todas as recepções encontradas
+curl -X POST "http://localhost:8000/campaigns/contact-all"
 
-# 6. Acessar o dashboard
+# 6. Acompanhar o pipeline no dashboard
 open http://localhost:3000
 ```
 
@@ -125,31 +138,30 @@ open http://localhost:3000
 |----------|-----------|
 | `SUPABASE_URL` | URL do projeto Supabase |
 | `SUPABASE_SERVICE_KEY` | Chave de serviço Supabase |
-| `REDIS_URL` | URL do Redis (ex: `redis://redis:6379/0`) |
+| `REDIS_URL` | URL do Redis |
 | `SENDGRID_API_KEY` | Chave da API SendGrid |
-| `EMAIL_REMETENTE` | E-mail de envio (ex: `contato@neomot.com.br`) |
+| `EMAIL_REMETENTE` | E-mail de envio (ex: `neo@neomot.com.br`) |
 | `TWILIO_ACCOUNT_SID` | Account SID do Twilio |
 | `TWILIO_AUTH_TOKEN` | Auth Token do Twilio |
-| `WHATSAPP_FROM` | Número WhatsApp Twilio (ex: `+14155238886`) |
+| `WHATSAPP_FROM` | Número WhatsApp Twilio |
+| `WHATSAPP_GESTOR` | WhatsApp do gestor Neomot (recebe notificações) |
 | `ANTHROPIC_API_KEY` | Chave da API Anthropic (Claude) |
 
 ---
 
 ## Plano de Implementação
 
-O plano técnico detalhado com todas as tarefas, testes e código está em:
+O plano técnico detalhado está em `.claude/plano-engsearch.md`
 
-`.claude/plano-engsearch.md`
-
-**Estimativa total de desenvolvimento:** ~13 dias úteis
+**Estimativa total de desenvolvimento:** ~15 dias úteis
 
 ---
 
-## Conformidade e Boas Práticas
+## Conformidade
 
-- **LGPD:** Apenas dados de perfis públicos são coletados. Todo e-mail inclui opção de descadastro.
-- **Rate limiting:** O agente respeita os limites das plataformas com pausas entre ações.
-- **WhatsApp Business:** Templates proativos aprovados no Meta Business Manager. Respostas a mensagens recebidas não exigem template.
+- **LGPD:** Apenas números/e-mails disponibilizados publicamente nos perfis são coletados. Toda mensagem inclui opção de descadastro.
+- **WhatsApp Business:** Templates proativos aprovados no Meta Business Manager para primeiro contato e follow-up.
+- **Rate limiting:** Agente opera com pausas entre ações para respeitar limites das plataformas.
 
 ---
 
