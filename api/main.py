@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import leads, reunioes
+from api.routes import leads, reunioes, webhooks
 
 app = FastAPI(
     title="EngSearch API",
@@ -17,6 +17,7 @@ app.add_middleware(
 
 app.include_router(leads.router)
 app.include_router(reunioes.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/health")
