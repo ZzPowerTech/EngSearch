@@ -28,12 +28,12 @@ def send_email_task(self, lead_id: str) -> dict:
     writer = EmailWriter()
 
     try:
-        result = db.table("leads").select("*").eq("id", lead_id).maybe_single().execute()
+        result = db.table("leads").select("*").eq("id", lead_id).limit(1).execute()
         if not result.data:
             logger.warning("Email task: lead %s not found", lead_id)
             return {"status": "lead_not_found"}
 
-        lead = result.data
+        lead = result.data[0]
 
         if not writer.can_send(lead):
             # No corporate email yet — mark lead for collection
