@@ -67,7 +67,7 @@ async def receive_whatsapp(
         db.table("leads")
         .select("*")
         .eq("whatsapp_recepcao", raw_number)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     if not lead_result.data:
@@ -75,7 +75,7 @@ async def receive_whatsapp(
         # Return 200 so Twilio doesn't retry
         return {"status": "lead_not_found"}
 
-    lead = lead_result.data
+    lead = lead_result.data[0]
     lead_id = lead["id"]
 
     # ── 2. Load conversation history ─────────────────────────────────────

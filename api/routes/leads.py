@@ -46,10 +46,10 @@ async def list_leads(
 async def get_lead(lead_id: str):
     """Fetch a single lead by ID."""
     client = get_client()
-    result = client.table("leads").select("*").eq("id", lead_id).maybe_single().execute()
+    result = client.table("leads").select("*").eq("id", lead_id).limit(1).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return result.data
+    return result.data[0]
 
 
 @router.patch("/{lead_id}", response_model=LeadResponse)

@@ -40,12 +40,12 @@ def send_followup_task(self, lead_id: str) -> dict:
     bot = WhatsappBot()
 
     try:
-        result = db.table("leads").select("*").eq("id", lead_id).maybe_single().execute()
+        result = db.table("leads").select("*").eq("id", lead_id).limit(1).execute()
         if not result.data:
             logger.warning("Followup task: lead %s not found", lead_id)
             return {"status": "lead_not_found"}
 
-        lead = result.data
+        lead = result.data[0]
 
         # Skip if lead has already advanced — they replied and the pipeline moved on
         if lead["status"] != "reception_contacted":
